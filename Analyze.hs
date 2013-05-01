@@ -1,4 +1,14 @@
 {-# LANGUAGE NamedFieldPuns #-}
+module Analyze
+-- (
+--  evaluateModule,
+--  evaluateCode,
+--  FocusedContext,
+--  LeftFocus,
+--  RightFocus,
+--  Scope,
+-- )
+where
 import qualified Data.Map as Map
 
 import Language.Python.Version2.Parser
@@ -15,8 +25,13 @@ import Debug.Trace
 main = do
   (filename:opts) <- getArgs
   code <- readFile filename
-  putStrLn $ runFunc filename code evaluateModule
+  putStrLn $ Pr.ppShow (runFunc filename code evaluateModule)
 --  putStrLn $ runFunc filename code (id)
+
+
+evaluateCode :: String -> String -> FocusedContext
+evaluateCode filename code = runFunc filename code evaluateModule
+
 
 evaluateModule :: ModuleSpan -> FocusedContext
 evaluateModule (Module statements) = foldl evaluateStatement globalFocusedContext statements
@@ -26,10 +41,10 @@ parsePython filename contents = case (parseModule contents filename) of
   Right (parseTree, comments) -> parseTree
   Left  err     ->   error "Parse failed"
 
-runFunc :: (Show a) => String -> String -> (ModuleSpan -> a) -> String
+runFunc :: (Show a) => String -> String -> (ModuleSpan -> a) -> a
 runFunc filename contents func = 
     let code = parsePython filename contents in
-    Pr.ppShow  (func code)
+    func code
 
 evaluateStatement :: StateModifier FocusedContext StatementSpan
 evaluateStatement context (Assign (target:[]) assign_expr _) =  --multiple assignment not supported
@@ -60,7 +75,7 @@ evaluateStatement context _ = trace "unregognized" context
 procAssignTarget :: FocusedContext -> ExprSpan -> PyType -> FocusedContext
 procAssignTarget scope lhs rhs =
   let lhs_zipper = convertToZipper lhs
-  in  zippedInsert scope lhs_zipper rhs
+  in zippedInsert scope lhs_zipper rhs
 
 typeOf :: (ScopeLike u) => u -> ExprSpan -> PyType
 typeOf context expr = zippedTypeOf context zippedExpr
@@ -84,6 +99,16 @@ singletonTypeOf context (Call { call_fun } ) =
   in case(callable) of
     Identity -> delete "__call__" call_target
     t -> t
+
+singletonTypeOf context List { list_exprs } = 
+  let el_types = map (typeOf context) list_exprs
+  in  PyList (pyTypeUnion el_types)
+
+singletonTypeOf context Subscript { subscriptee } =
+  let subscriptee_type = typeOf context subscriptee
+  in case (subscriptee_type) of 
+    PyList t -> t
+    notalist -> ObjectNotSubscriptable (render (pretty subscriptee))
 
 singletonTypeOf context expr   = trace (show expr) (Unknown)
 
@@ -114,9 +139,24 @@ convertToExprZipper :: ExprSpan -> [ExprSpan]
 convertToExprZipper (BinaryOp (Dot _) left right _) = convertToExprZipper left ++ convertToExprZipper right
 convertToExprZipper expr = [expr]
 
+pyTypeUnion :: [PyType] -> PyType
+pyTypeUnion types = 
+  let underlying = (foldl mergeIntoUnion [] types)
+  in case (underlying) of
+    [x] -> x
+    longer -> UnionType longer
+
+
+mergeIntoUnion :: [PyType] -> PyType -> [PyType]
+mergeIntoUnion soFar new 
+  | new `elem` soFar = soFar
+  | otherwise = new : soFar
+
+
+
 
 scopeToClass :: Scope -> PyType
-scopeToClass (Scope scope) = ComplexType scope
+scopeToClass (Scope scope) = ComplexType scope []
 
 -- Wraps find to add errors for missing types
 findWrapper :: (ScopeLike u) => String -> u -> PyType 
@@ -133,7 +173,7 @@ addClassMetadata scope =
     Nothing -> insert "__call__" Identity scope -- TODO: create py-function
     Just cons -> insert "__call__" cons scope -- TODO: bind to type
 
-data Scope = Scope ScopeMap deriving (Show)
+data Scope = Scope ScopeMap deriving (Show, Eq)
 
 class ScopeLike a where
     find :: String -> a -> Maybe PyType 
@@ -142,32 +182,37 @@ class ScopeLike a where
 
 type ScopeMap = Map.Map String PyType
 
+type ScopeZipper = [String]
+
 data PyType = 
-    ComplexType ScopeMap | 
+    UnionType [PyType] | 
+    ComplexType ScopeMap [ScopeZipper] | 
     PyInt | 
     PyBool | 
-    List PyType | 
+    PyList PyType | 
     PyDict PyType PyType | 
     Function { name :: String, args :: [ParameterSpan], body :: SuiteSpan } |
     Identity |
     Unknown |
     AttributeNotFound String |
     IdentifierNotFound String |
+    ObjectNotSubscriptable String |
     ObjectNotCallable String deriving (Show, Eq) 
 
 
 data FocusLocation = LeftFocus | RightFocus deriving (Eq, Show, Bounded)
-data FocusedContext = FocusedContext { left :: Scope, right :: Scope, focus :: FocusLocation } deriving (Show)
+data FocusedContext = FocusedContext { left :: Scope, right :: Scope, focus :: FocusLocation } deriving (Show, Eq)
 
 globalFocusedContext = 
   let emptyScope = Scope Map.empty in 
     FocusedContext emptyScope emptyScope LeftFocus
 
 instance ScopeLike PyType where
-    find key (ComplexType scope) = Map.lookup key scope
+    find key (ComplexType scope _) = Map.lookup key scope
     find key _ = Nothing
-    insert key pytype (ComplexType scope)  = ComplexType (Map.insert key pytype scope)
-    delete key (ComplexType scope)  = ComplexType (Map.delete key scope)
+    -- TODO: also insert into refs
+    insert key pytype (ComplexType scope refs)  = ComplexType (Map.insert key pytype scope) refs
+    delete key (ComplexType scope refs)  = ComplexType (Map.delete key scope) refs
 
 instance ScopeLike Scope where
     find key (Scope scope) = Map.lookup key scope
