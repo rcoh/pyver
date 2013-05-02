@@ -74,8 +74,13 @@ evaluateStatement context _ = trace "unregognized" context
 
 procAssignTarget :: FocusedContext -> ExprSpan -> PyType -> FocusedContext
 procAssignTarget scope lhs rhs =
-  let lhs_zipper = convertToZipper lhs
+  let lhs_zipper = convertToExprZipper lhs
   in zippedInsert scope lhs_zipper rhs
+
+identForSimpleExpr :: ExprSpan -> String
+identForSimpleExpr Var { var_ident } = ident_string var_ident
+identForSimpleExpr Call { call_fun  } = identForSimpleExpr call_fun
+identForSimpleExpr Subscript { subscriptee } = identForSimpleExpr subscriptee
 
 typeOf :: (ScopeLike u) => u -> ExprSpan -> PyType
 typeOf context expr = zippedTypeOf context zippedExpr
@@ -116,19 +121,26 @@ zippedLookup :: (ScopeLike u) => u -> [String] -> PyType
 zippedLookup u (single:[]) = findWrapper single u
 zippedLookup u (ident:rest) = zippedLookup (findWrapper ident u) rest
 
-zippedInsert :: FocusedContext -> [String] -> PyType -> FocusedContext
-zippedInsert context (last_ident:[]) rhs =
-  insert last_ident rhs context
+zippedInsert :: FocusedContext -> [ExprSpan] -> PyType -> FocusedContext
+zippedInsert context (last_expr:[]) rhs =
+  let last_ident = identForSimpleExpr last_expr
+  in insert last_ident rhs context
 
-zippedInsert context (ident:rest) rhs = 
-  let topscope = findWrapper ident context
+zippedInsert context (first:rest) rhs = 
+  let 
+    ident = identForSimpleExpr first
+    topscope = typeOf context first
   in insert ident (zippedInsertPyType topscope rest rhs) context
 
-zippedInsertPyType :: PyType -> [String] -> PyType -> PyType
-zippedInsertPyType context (last_ident:[]) rhs =
-  insert last_ident rhs context
-zippedInsertPyType context (ident:rest) rhs =
-  let topscope = findWrapper ident context
+zippedInsertPyType :: PyType -> [ExprSpan] -> PyType -> PyType
+zippedInsertPyType context (last_expr:[]) rhs =
+  let last_ident = identForSimpleExpr last_expr
+  in insert last_ident rhs context
+
+zippedInsertPyType context (first:rest) rhs =
+  let 
+    ident = identForSimpleExpr first
+    topscope = typeOf context first
   in insert ident (zippedInsertPyType topscope rest rhs) context
 
 convertToZipper :: ExprSpan -> [String]
@@ -144,6 +156,7 @@ pyTypeUnion types =
   let underlying = (foldl mergeIntoUnion [] types)
   in case (underlying) of
     [x] -> x
+    []  -> Unknown
     longer -> UnionType longer
 
 
