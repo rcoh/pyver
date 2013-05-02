@@ -216,11 +216,11 @@ findResolveIdentity ident scope =
 
 instance ScopeLike PyType where
     find key (ComplexType scope _) = Map.lookup key scope
-    -- TODO: this needs tweaking. Make test_unions correct
     find key (UnionType types) = Just (pyTypeUnion (map (findResolveIdentity key) types))
     find key _ = Nothing
     -- TODO: also insert into refs
     insert key pytype (ComplexType scope refs)  = ComplexType (Map.insert key pytype scope) refs
+    insert key pytype (UnionType types) = pyTypeUnion (map (insert key pytype) types)
     delete key (ComplexType scope refs)  = ComplexType (Map.delete key scope) refs
 
 instance ScopeLike Scope where
