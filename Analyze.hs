@@ -1,13 +1,5 @@
 {-# LANGUAGE NamedFieldPuns #-}
 module Analyze
--- (
---  evaluateModule,
---  evaluateCode,
---  FocusedContext,
---  LeftFocus,
---  RightFocus,
---  Scope,
--- )
 where
 import qualified Data.Map as Map
 
@@ -146,14 +138,10 @@ pyTypeUnion types =
     [x] -> x
     longer -> UnionType longer
 
-
 mergeIntoUnion :: [PyType] -> PyType -> [PyType]
 mergeIntoUnion soFar new 
   | new `elem` soFar = soFar
   | otherwise = new : soFar
-
-
-
 
 scopeToClass :: Scope -> PyType
 scopeToClass (Scope scope) = ComplexType scope []
@@ -164,7 +152,6 @@ findWrapper ident scope =
   case (find ident scope) of 
     Just t -> t
     Nothing -> IdentifierNotFound ident
-  
 
 addClassMetadata :: PyType -> PyType
 addClassMetadata scope =
