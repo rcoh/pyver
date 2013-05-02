@@ -207,8 +207,17 @@ globalFocusedContext =
   let emptyScope = Scope Map.empty in 
     FocusedContext emptyScope emptyScope LeftFocus
 
+findResolveIdentity ident scope =
+  case (find ident scope) of
+    Just Identity -> delete "__call__" scope
+    Just x -> x
+    Nothing -> IdentifierNotFound ident
+
+
 instance ScopeLike PyType where
     find key (ComplexType scope _) = Map.lookup key scope
+    -- TODO: this needs tweaking. Make test_unions correct
+    find key (UnionType types) = Just (pyTypeUnion (map (findResolveIdentity key) types))
     find key _ = Nothing
     -- TODO: also insert into refs
     insert key pytype (ComplexType scope refs)  = ComplexType (Map.insert key pytype scope) refs
