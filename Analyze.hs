@@ -1,13 +1,5 @@
 {-# LANGUAGE NamedFieldPuns #-}
 module Analyze
--- (
---  evaluateModule,
---  evaluateCode,
---  FocusedContext,
---  LeftFocus,
---  RightFocus,
---  Scope,
--- )
 where
 import qualified Data.Map as Map
 
@@ -159,14 +151,10 @@ pyTypeUnion types =
     []  -> Unknown
     longer -> UnionType longer
 
-
 mergeIntoUnion :: [PyType] -> PyType -> [PyType]
 mergeIntoUnion soFar new 
   | new `elem` soFar = soFar
   | otherwise = new : soFar
-
-
-
 
 scopeToClass :: Scope -> PyType
 scopeToClass (Scope scope) = ComplexType scope []
@@ -177,7 +165,6 @@ findWrapper ident scope =
   case (find ident scope) of 
     Just t -> t
     Nothing -> IdentifierNotFound ident
-  
 
 addClassMetadata :: PyType -> PyType
 addClassMetadata scope =
@@ -220,11 +207,20 @@ globalFocusedContext =
   let emptyScope = Scope Map.empty in 
     FocusedContext emptyScope emptyScope LeftFocus
 
+findResolveIdentity ident scope =
+  case (find ident scope) of
+    Just Identity -> delete "__call__" scope
+    Just x -> x
+    Nothing -> IdentifierNotFound ident
+
+
 instance ScopeLike PyType where
     find key (ComplexType scope _) = Map.lookup key scope
+    find key (UnionType types) = Just (pyTypeUnion (map (findResolveIdentity key) types))
     find key _ = Nothing
     -- TODO: also insert into refs
     insert key pytype (ComplexType scope refs)  = ComplexType (Map.insert key pytype scope) refs
+    insert key pytype (UnionType types) = pyTypeUnion (map (insert key pytype) types)
     delete key (ComplexType scope refs)  = ComplexType (Map.delete key scope) refs
 
 instance ScopeLike Scope where
