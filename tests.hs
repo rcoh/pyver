@@ -14,13 +14,13 @@ makeFilebackedTest filename expected =
     code <- readFile filename
     assertEqual filename expected (evaluateCode filename code)
 
-test1 = makeFilebackedTest "basic_test.py"
+test_basic = makeFilebackedTest "basic_test.py"
   FocusedContext {left = Scope (fromList [("x",PyInt)]), right = Scope (fromList []), focus = LeftFocus}
 
-test2 = makeFilebackedTest "undefined_test.py" 
+test_undefined = makeFilebackedTest "undefined_test.py" 
   FocusedContext {left = Scope (fromList [("x",IdentifierNotFound "a")]), right = Scope (fromList []), focus = LeftFocus}
 
-test3 = makeFilebackedTest "test_lists.py"
+test_lists = makeFilebackedTest "test_lists.py"
     FocusedContext
       { left = Scope (
                  fromList
@@ -119,9 +119,9 @@ test_nested_lists = makeFilebackedTest "test_nested_lists.py"
 
 
 tests = TestList [
-    TestLabel "test1" test1, 
-    TestLabel "test2" test2, 
-    TestLabel "test_lists" test3,
-    TestLabel "test_nested", test_nested_lists]
+    TestLabel "test_basic" test_basic, 
+    TestLabel "test_undefined" test_undefined, 
+    TestLabel "test_lists" test_lists,
+    TestLabel "test_nested" test_nested_lists]
 
 main = runTestTT tests

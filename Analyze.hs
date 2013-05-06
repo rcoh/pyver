@@ -53,14 +53,11 @@ evaluateStatement context@(FocusedContext left right LeftFocus) (Class name args
       class_without_extra = scopeToClass new_class_scp
       class_type = addClassMetadata class_without_extra
       
-  in insert (ident_string name) class_type context
+  in setAttr (ident_string name) class_type context
 
 evaluateStatement context (Fun (Ident name _)  args result_annot body _) = 
-  insert name (Function name args body) context
+  setAttr name (Function name args body) context
 
---evaluateStatement context (Call call_fun call_args _) = 
---  let call_target = find 
-  
 
 evaluateStatement context _ = trace "unregognized" context 
 
@@ -86,11 +83,11 @@ singletonTypeOf :: (ScopeLike u) => u -> ExprSpan -> PyType
 singletonTypeOf _ Int{} = PyInt
 singletonTypeOf context (Var (Ident "True" _) _) = PyBool
 singletonTypeOf context (Var (Ident "False" _) _) = PyBool
-singletonTypeOf context (Var (Ident name _) _) = findWrapper name context
+singletonTypeOf context (Var (Ident name _) _) = getAttrWrapper name context
 singletonTypeOf context (Call { call_fun } ) = 
   let 
     call_target = typeOf context call_fun
-    callable = case (find "__call__" call_target) of 
+    callable = case (getAttr "__call__" call_target) of 
         Just c -> c
         Nothing -> ObjectNotCallable (render (pretty call_fun))
   in case(callable) of
@@ -101,39 +98,40 @@ singletonTypeOf context List { list_exprs } =
   let el_types = map (typeOf context) list_exprs
   in  PyList (pyTypeUnion el_types)
 
-singletonTypeOf context Subscript { subscriptee } =
-  let subscriptee_type = typeOf context subscriptee
-  in case (subscriptee_type) of 
-    PyList t -> t
-    notalist -> ObjectNotSubscriptable (render (pretty subscriptee))
+singletonTypeOf context Subscript { subscriptee, subscript_expr } =
+  let 
+      subscriptee_type = typeOf context subscriptee
+      expr_type = typeOf context subscript_expr
+  in 
+      subscriptGet expr_type subscriptee_type
+--  in case (subscriptee_type) of 
+--    PyList t -> t
+--    notalist -> ObjectNotSubscriptable (render (pretty subscriptee))
 
 singletonTypeOf context expr   = trace (show expr) (Unknown)
-
-zippedLookup :: (ScopeLike u) => u -> [String] -> PyType 
-zippedLookup u (single:[]) = findWrapper single u
-zippedLookup u (ident:rest) = zippedLookup (findWrapper ident u) rest
 
 zippedInsert :: FocusedContext -> [ExprSpan] -> PyType -> FocusedContext
 zippedInsert context (last_expr:[]) rhs =
   let last_ident = identForSimpleExpr last_expr
-  in insert last_ident rhs context
+  in setAttr last_ident rhs context
 
 zippedInsert context (first:rest) rhs = 
   let 
     ident = identForSimpleExpr first
-    topscope = typeOf context first
-  in insert ident (zippedInsertPyType topscope rest rhs) context
+    ident_type = getAttrWrapper ident context 
+    topscope = trace (show ident_type) (typeOf context first)
+  in setAttr ident (zippedInsertPyType topscope rest rhs) context
 
 zippedInsertPyType :: PyType -> [ExprSpan] -> PyType -> PyType
 zippedInsertPyType context (last_expr:[]) rhs =
   let last_ident = identForSimpleExpr last_expr
-  in insert last_ident rhs context
+  in setAttr last_ident rhs context
 
 zippedInsertPyType context (first:rest) rhs =
   let 
     ident = identForSimpleExpr first
     topscope = typeOf context first
-  in insert ident (zippedInsertPyType topscope rest rhs) context
+  in setAttr ident (zippedInsertPyType topscope rest rhs) context
 
 convertToZipper :: ExprSpan -> [String]
 convertToZipper Var { var_ident } = [ident_string var_ident]
@@ -159,26 +157,28 @@ mergeIntoUnion soFar new
 scopeToClass :: Scope -> PyType
 scopeToClass (Scope scope) = ComplexType scope []
 
--- Wraps find to add errors for missing types
-findWrapper :: (ScopeLike u) => String -> u -> PyType 
-findWrapper ident scope = 
-  case (find ident scope) of 
+-- Wraps getAttr to add errors for missing types
+getAttrWrapper :: (ScopeLike u) => String -> u -> PyType 
+getAttrWrapper ident scope = 
+  case (getAttr ident scope) of 
     Just t -> t
     Nothing -> IdentifierNotFound ident
 
 addClassMetadata :: PyType -> PyType
 addClassMetadata scope =
-  let existing_constructor = find "__init__" scope 
+  let existing_constructor = getAttr "__init__" scope 
   in case (existing_constructor) of 
-    Nothing -> insert "__call__" Identity scope -- TODO: create py-function
-    Just cons -> insert "__call__" cons scope -- TODO: bind to type
+    Nothing -> setAttr "__call__" Identity scope -- TODO: create py-function
+    Just cons -> setAttr "__call__" cons scope -- TODO: bind to type
 
 data Scope = Scope ScopeMap deriving (Show, Eq)
 
 class ScopeLike a where
-    find :: String -> a -> Maybe PyType 
-    insert :: String -> PyType -> a -> a
+    getAttr :: String -> a -> Maybe PyType 
+    setAttr :: String -> PyType -> a -> a
     delete :: String -> a -> a
+    subscriptGet :: PyType -> a -> PyType
+    subscriptSet :: PyType -> PyType -> a -> PyType
 
 type ScopeMap = Map.Map String PyType
 
@@ -207,38 +207,45 @@ globalFocusedContext =
   let emptyScope = Scope Map.empty in 
     FocusedContext emptyScope emptyScope LeftFocus
 
-findResolveIdentity ident scope =
-  case (find ident scope) of
+getAttrResolveIdentity ident scope =
+  case (getAttr ident scope) of
     Just Identity -> delete "__call__" scope
     Just x -> x
     Nothing -> IdentifierNotFound ident
 
 
 instance ScopeLike PyType where
-    find key (ComplexType scope _) = Map.lookup key scope
-    find key (UnionType types) = Just (pyTypeUnion (map (findResolveIdentity key) types))
-    find key _ = Nothing
-    -- TODO: also insert into refs
-    insert key pytype (ComplexType scope refs)  = ComplexType (Map.insert key pytype scope) refs
-    insert key pytype (UnionType types) = pyTypeUnion (map (insert key pytype) types)
+    getAttr key (ComplexType scope _) = Map.lookup key scope
+    getAttr key (UnionType types) = Just (pyTypeUnion (map (getAttrResolveIdentity key) types))
+    getAttr key _ = Nothing
+    -- TODO: also setAttr into refs
+    setAttr key pytype (ComplexType scope refs)  = ComplexType (Map.insert key pytype scope) refs
+    setAttr key pytype (UnionType types) = pyTypeUnion (map (setAttr key pytype) types)
     delete key (ComplexType scope refs)  = ComplexType (Map.delete key scope) refs
 
+    -- TODO: validate indices
+    subscriptGet index (PyList t) = t
+    subscriptGet index othertype = ObjectNotSubscriptable "TODO"
+    
+    subscriptSet index value (PyList t) = PyList $ pyTypeUnion (value : [t])
+    subscriptSet index value othertype = ObjectNotSubscriptable "TODO"
+
 instance ScopeLike Scope where
-    find key (Scope scope) = Map.lookup key scope
-    insert key pytype (Scope scope) = Scope (Map.insert key pytype scope)
+    getAttr key (Scope scope) = Map.lookup key scope
+    setAttr key pytype (Scope scope) = Scope (Map.insert key pytype scope)
     delete key (Scope scope) = Scope (Map.delete key scope)
 
 instance ScopeLike FocusedContext where
-    find key (FocusedContext left right LeftFocus) = case (find key left) of
+    getAttr key (FocusedContext left right LeftFocus) = case (getAttr key left) of
       Just x -> Just x
-      Nothing -> find key right
+      Nothing -> getAttr key right
     
-    find key (FocusedContext left right RightFocus) = case (find key right) of
+    getAttr key (FocusedContext left right RightFocus) = case (getAttr key right) of
       Just x -> Just x
-      Nothing -> find key left
+      Nothing -> getAttr key left
 
-    insert key pytype (FocusedContext left right LeftFocus) = FocusedContext (insert key pytype left) right LeftFocus
-    insert key pytype (FocusedContext left right RightFocus) = FocusedContext left (insert key pytype right) RightFocus
+    setAttr key pytype (FocusedContext left right LeftFocus) = FocusedContext (setAttr key pytype left) right LeftFocus
+    setAttr key pytype (FocusedContext left right RightFocus) = FocusedContext left (setAttr key pytype right) RightFocus
     
     delete key (FocusedContext left right LeftFocus) = FocusedContext (delete key left) right LeftFocus
     delete key (FocusedContext left right RightFocus) = FocusedContext left (delete key right) RightFocus

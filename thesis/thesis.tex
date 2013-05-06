@@ -1,0 +1,483 @@
+\documentclass{article}[12pt]
+\usepackage{fullpage}
+\usepackage{setspace}
+\usepackage{minted}
+\author{Russell Cohen}
+\title{Pyver: \\ A Python Static Analyzer Written in Haskell}
+\date{\today}
+\begin{document}
+\renewcommand{\theFancyVerbLine}{
+      \sffamily\textcolor[rgb]{0.5,0.5,0.5}{\scriptsize\arabic{FancyVerbLine}}}
+
+\maketitle
+\section{Motivation}
+
+\subsection{Compiled vs. Interpreted Languages}
+\doublespacing
+% Errors late vs errors early
+% Python is errors late
+Python is an extremely widely used programming language -- it's utilized everywhere from teaching courses to production
+web sites. One of Python's strengths is it's flexibility. Python is a dynamic language that is
+interpreted at runtime. While this contributes to it's flexibility, it also introduces a class of
+potential errors that are impossible in compiled languages.
+
+When writing software, their are two classes of errors that occur: logical errors in a semantically
+correct program, and errors that violate the semantics of the programming language. The study of
+detection in logical errors increasing with the development of self-proving languages such as Coq
+and Algol. Semantic errors, on the other hand, are well understood, and compilers for static
+languages can reason about these errors at compile time. 
+
+In general, one wants to know about these errors as quickly as possible. The sooner that the error
+is discovered, the sooner the programmer can investigate the problem and continue their development
+process. Compiled languages detect semantic errors at the compile phase -- before the program is
+even run. This increases the time before the program can be run, but it \emph{guarantees} that
+program is free from entire classes of errors. Languages like Java, C++, and Haskell fall into this
+category. Once a Java program is compiled, the compiled binary is guaranteed to be free from type
+errors provided that the code avoids certain unsafe operations. 
+\begin{figure}
+\begin{minted}{c}
+    struct Student {
+        int grade;
+    }
+    Student s;
+    int atten = s.attendance; // Semantic error -- Student has no field attendance
+\end{minted}
+\caption{A semantic error in the C Programming Language. This is detected by the compiler at compile
+time.}
+\end{figure}
+
+\begin{figure}
+    \begin{minted}{python}
+        class Student:
+          attendance = 100
+
+        s = Student()
+        atten = s.attendance # Runtime type error
+    \end{minted}
+    \caption{A semantic error in Python isn't caught until runtime which could an occur and
+    arbitrary amount of time after starting the program.}
+\end{figure}
+
+In a large class of languages, however, these guarantees aren't present. Rather than being compiled,
+interpreted languages are evaluated line by line as the interpreter reaches the line in question.
+Interpreted languages can be extremely flexible and allow programmers a large amount of freedom in
+how the use language constructs. However, these languages make weak guarantees on the programs they
+run. In Python, for example, the interpreter only checks that the program is syntactically valid
+before running it.  There is a massive class errors that can only be discovered after program
+executes the statement. In short running programs, this can be equivalent to a compiled language.
+The programmer runs his code, and the Python interpreter outputs a type error. If instead, the
+errant statement doesn't get executed for several hours after the program begins, the programmer has
+now wasted hours that would have been saved the system could have notified her of a type error at
+runtime. 
+% TODO: type error example.
+
+Late error detection is also an error when Python is used as a webserver -- if a type error is
+accidentally introduced in a seldom used codepath, the error won't be discovered until much later
+when a user hits the codepath and is presented with the error. Ideally, the programmer could have
+been alerted of this error before deploying the code. If the website had been written in a
+statically typed language, the error would have been caught at compile time and fixed. Instead, it
+made it all the way to an end user.
+
+\section{Why Doesn't Python Include Semantic Checking?}
+% TODO: example computing with information stored in types
+% TODO: how to compute with python type system
+In light of the problems with dynamic languages such as Python, one wonders why Python is missing
+static checking. The problem lies in the flexibility of Python's type system. 
+
+Before investigating the flexibility of the type system, let's clarify exactly what we mean when we
+discuss the type of a variable. Intuitively, it's any property where changing it could cause a type
+error. In Python, this encompasses the fields an object has if it is a instance type or the objects
+underlying core type. See figure TODO for examples.
+
+\begin{figure}
+    \begin{minted}{python}
+        a = [] # A has list type
+        b = 5 # B has int type
+        c = a + b # This is a runtime type error
+
+        # class X has one integer field, a
+        class X:
+          a = 5
+
+        x_inst = X() # x_inst has one integer field a
+
+        # This would be a runtime type error:
+        # val = x_inst.b
+        
+        # Add another field to the instance
+        x_inst.b = True # x_inst is now A DIFFERENT TYPE. 
+        
+        # Not anymore:
+        val = x_inst.b
+    \end{minted}
+    \caption{Examples of types in Python. Types can either be a core type or instance type. Instance
+    types vary in the fields they define}
+\end{figure}
+
+In Python, the type of a variable can change as the program proceeds. Contrast this with Java where
+a variable is born with a type that never changes. Since Python types can change, it stands to
+reason that if we wanted to, we could encode information in the type of a value rather than using
+the value instead. You could write an entire program that worked by only modifying the types of
+variables! Although I will not prove it, it should be relatively obvious that the only perfect type
+verification system for Python is to run the program! After you've run the program, you've pretty
+much defeated the purpose (even ignoring the programs dependence and effects on external inputs).
+
+
+Thankfully, though a perfect system is impossible, it is possible the create a system approximates
+type information instead. Ideally, rather than running in an undecidable amount of time, our type
+system will run in time linear to the number of statements in the program. From this, it because
+clear that we can't allow our analysis to backtrack -- it can only analyze each statement once. 
+
+Thus, we must approximate control flow that would cause our program to loop. There are two primary
+elements of control flow that would cause our program to loop on itself: looped control flow and
+recursion. Handling looped control is actually quite straightforward: simply ignore it.
+\begin{figure}
+    \begin{minted}{python}
+      def count_occurrences(list, item_to_count):
+          count = 0
+          for item in list_of_data:
+            if item == item_to_count: 
+              count += 1
+          return count
+      
+      some_strings = ['6.01', '6.02', '6.035', '6.UAP', '6.UAT', '6.UAP']
+      count = count_occurrences(some_strings)
+
+  \end{minted}
+  \caption{
+      A loop to count the occurrences of an item in a list. In this loop, the types of the
+      variables can be fully inferred by one evaluation of the loop.
+  }
+\end{figure}
+
+
+\begin{figure}
+    \begin{minted}{python}
+        class Empty:
+            pass
+
+        e = Empty()
+        for i in range(10):
+            setattr(e, "prop" + str(i), True) # e.prop1 = True, e.prop2 = True, etc.
+
+        print e.prop5
+        # The type of e now is directly dependent on the number of loop iterations
+    \end{minted}
+    \caption{
+        Performing a silly computation with types. Without fully evaluating the loop, there is now
+        way that we could determine the type of \texttt{e}. If we evaluated once, we would infer
+        \texttt{e} to have only one parameter, \texttt{prop1}. However, \texttt{e} will have 10
+        properties set.  
+     } \end{figure}
+% TODO: example of ignoring looped control flow.
+% TODO: example where type information is lost
+When our analyzer reaches it loop, it registers the type information it can infer about the looping
+variables and it evaluates the body of loop a single time. Then, it makes the simplifying (and
+potentially incorrect) assumption that though the values may change in subsequent executions of the
+loop, the type information will not.
+
+The more complex case to handle is that of recursion -- recall that iteration can even be simulated
+by recursive functions. We handle recursive functions by first detecting that a function is
+recursive (by tracking the function graph), and then applying an approximation. We approximate
+recursive functions by assuming (possibly incorrectly) that the concrete type returned by the
+function is the actual return type of the function. More precise details on handling of functions
+will follow.
+
+\section{High Level Design}
+  Our static analyzer by creating an abstract representation of Python programs, and then simulating
+  their execution within this abstract space. Our abstract representation is broken up into two
+  components: the type system, and the evaluation system. The state of a Python program is
+  represented entirely by the type system. Each line of code is translated into a series actions
+  which are then applied to the program state. The system is designed to find two types of problems
+  in code: type errors which would cause the program to halt in an unexpected way, and accidental
+  types that will not halt the program but will almost certainly cause unexpected behavior to occur.
+
+\subsection{Handling of Errors}
+Error handling must be done with care in order to ensure a useful system. For example, if the
+analyzer stops running on reaching a potential error, it's of limited use, especially if the error
+was a false positive. In our system, errors are actually included in the program state. For
+example, consider the following short Python program:
+\begin{minted}{python}
+    x = a
+\end{minted}
+In this program, \verb=x= is assigned to \verb=a=, but a isn't defined. In our system, the type of
+\verb=x= would then become \verb=NotDefined 'a'=. Any further computations that used \verb=x= would
+have this value propagated.
+
+This behavior is identical for other classic type mistakes, eg.:
+\begin{minted}{python}
+    a = 5
+    x = a[1] # IdentifierNotSubscriptable 'a'
+\end{minted}
+Along with being propagated through the program state, we also maintain a list of errors that have
+been detected as the program executes.
+
+\subsection{Handing Of Warnings}
+Since PyVer does a reasonable job a producing a full picture of the types used in a program, it
+can also detect usages of types that are probably unintentional. We leverage this knowledge to warn
+programmers of suspect code to limit time spent debugging. To produce warnings, we have several heuristics we have added. In a complete system, many more would
+help to catch bugs in a wider range of programs. PyVer can currently produce the following warnings:
+
+\begin{itemize}
+    \item \textbf{Differing core types surrounding \texttt{==}}: In Python, an integer type will never
+          equal a list type will never equal a set type will never equal a dictionary type will
+          never equal a string type. This only applies to the core types, however, since their
+          equality method cannot be overridden. This has one notable edge case: \texttt{True} and
+          \texttt{False} in
+          Python are not really their own types -- \texttt{True} is an alias for 1 and
+          \texttt{False} is an alias for 0. Therefore, comparing integers to booleans is a
+          reasonable thing to do (although a bit opaque to the reader).
+
+      \item \textbf{Using a value from a function that returns only \texttt{NoneType}}: While functions can often
+          return \texttt{NoneType} validly in some cases, our system will detect a function that can only
+          return None in cases where there are no return statements. Using the value in a function
+          without a return statement is almost certainly incorrect.
+\end{itemize}
+
+Python certainly contains many more of these type ``gotchas'', and they could be incorporated into a
+productionized version of this system.
+          
+
+\subsection{Representation of Type System} 
+
+Loosely speaking, the Type System represents the noun of our inference system. The type system has
+the following representation:
+\emph{This listing needs to be reworked to be more readable}
+ \begin{verbatim} 
+  PyType = 
+      # Core Types
+      PyInt | 
+      PyBool | 
+      PyChar |
+      PyStr  |
+
+      PyList PyType | 
+      PySet  PyType |
+      PyDict PyType PyType | 
+
+      UnionType [PyType] | 
+
+      ComplexType { String => PyType } | 
+      Function { name :: String, args :: [PyType], body :: [Action] } | 
+
+      Identity |
+      Unknown |
+
+      AttributeNotFound String |
+      IdentifierNotFound String |
+      ObjectNotSubscriptable String |
+      ObjectNotCallable String deriving (Show, Eq) 
+\end{verbatim}
+
+This encompasses types for the core Python primitives (ints, bools, strings), the standard parameterized types (lists, sets, and dictionaries). The UnionType allows us to represent expressions that may be several different types at a given program point, for example, in code like the following:
+
+\begin{minted}{python}
+    a = [1, False, []]
+    b = a[math.randint(2)]
+\end{minted}
+
+Our system inferences \verb=b= to be a \verb=UnionType [PyInt, PyBool, PyList Unknown]=.
+
+\verb=ComplexType=, which contains a map from \verb=String= to \verb=PyType= is used to represent
+classes composed of the other core types. For example:
+\begin{minted}{python}
+    class Student:
+      grade = 95 
+      enrolled = True
+\end{minted}
+
+Our system inferences \verb=Student= to be a 
+\verb=ComplexType { grade -> PyInt, enrolled -> PyBool }=
+
+The identity type is used to represent fields which have the identical type of their parent. We use
+this constructor field of classes. For example, returning the student example, the actual
+representation would be
+\verb=ComplexType { grade -> PyInt, enrolled -> PyBool, __init__ -> Identity }=
+(\verb=__init__= is the constructor method in Python).
+
+Unknown is used when the type of a variable cannot be knowable at a code position, for example:
+\begin{minted}{python}
+    a = []
+\end{minted}
+Our system inferences \verb=a= to be a \verb=ListType Unknown=.
+
+The remaining types are generated when the action that is applied to a type is illegal to apply (for
+example applying \verb=getSubscript= to an \verb=PyType=
+
+\subsection{Representation of the action system}
+The action system represents the verbs of our abstract representation. The actions correspond to
+actions that are built into the Python language. Python programs are
+deconstructed into the following actions:
+\emph{This listing does as well}
+\begin{verbatim}
+  Action =
+    Assignment   lhsFunc :: (PyType -> PyType -> PyType), rhs :: PyType
+    GetAttribute item :: String, base_object :: PyType -> PyType
+    SetAttribute item :: String, attr_value :: PyType, base_object :: PyType -> PyType
+    DeleteAttribute TODO
+    GetSubscript index ::  PyType,  base_object :: PyType -> PyType
+    SetSubscript index ::  PyType, value :: PyType, base_object :: PyType -> PyType
+    DeleteSubscript index ::  PyType, base_object :: PyType -> PyType
+
+    ArithPlus left :: PyType, right :: PyType -> PyType
+    ArithMinus left :: PyType, right :: PyType -> PyType  
+    ArithTimes left :: PyType, right :: PyTyp -> PyTypee
+    ArithDiv left :: PyType, right :: PyTyp -> PyTypee
+
+    ArithPlusEqual left :: PyType, right :: PyType
+    ArithMinusEqual left :: PyType, right :: PyType
+
+    ArithCheckEqual left :: PyType, right :: PyType
+
+    FunctionCall callable :: PyType, args :: [PyType]
+
+    LoopFor  looping_scope :: PyType, body :: [Action]
+    LoopWhile  looping_scope :: PyType, body :: [Action]
+\end{verbatim}
+
+% TODO: nesting actions?
+
+These operations are generalized in that they operate identically not only on concrete types, but
+also on scopes. When applied, all actions produce PyTypes.
+
+\verb=GetAttribute= is the ``dot'' operator as well as simply looking up a variable in a scope. When
+applied, GetAttribute yields the type of the resulting attribute.
+Accessing in a scope:
+\begin{minted}{python}
+    a = 5
+    x = a # GetAttribute ``a'' ProgramScope
+\end{minted}
+
+Accessing in a class:
+\begin{minted}{python}
+    class Student:
+      grade = 95
+
+    s = Student()
+    grade = s.grade #GetAttribute ``grade'' s
+\end{minted}
+
+Similarly, \verb=SetAttribute= sets class attributes as well as variables into scopes. When applied,
+SetAttribute returns the \verb=base_object= with the new attribute added.
+
+\begin{minted}{python}
+    a = 5 #SetAttribute {item: 'a',  attr_value: PyInt, base_object : ProgramScope}
+    class Student:
+      grade = 100
+
+    s = Student()
+    s.attendance = .99 # SetAttribute {item: 'attendance':, attr_value: PyFloat, base_object: s}
+\end{minted}
+
+\verb=GetSubscript= and \verb=SetSubscript= are the parallel to \verb=GetAttribute= and
+\verb=SetAttribute=, but the subscript operator (\verb=[]=)
+
+\begin{minted}{python}
+    a = [1, 2, 3]
+    b = a[1] # GetSubscript { index :: PyInt, base_object :: a }
+    a[2] = b # SetSubscript { index :: PyInt, value : : PyInt, base_object :: PyList Int }
+\end{minted}
+
+\section{Implementation Details}
+
+Under the hood, the analyzer is implemented in Haskell. Haskell was chosen because of it's type
+safety, functional properties, and the presence of Python parser in the standard library. 
+
+The analysis is implemented as one large fold. The program is processed statement by statement. Each
+statement produces a new program state, which is given to the next statement.
+
+\subsection{Handling Mutable State}
+Representing a language like Python that relies heavily on shared mutable state in Haskell is
+tricky. We handle it by using value numbering. All values that should be kept identical share the
+same value-number. Inside the actual tree, the values are not stored, but instead, their value
+numbers. When something is modified, it is modified in the map from value number to \verb=PyType=.
+That way, all attributes which should share the same type in the Python program are also modified.
+An example:
+
+\begin{minted}{python}
+    class Student:
+      grade = 95
+    student1 = Student()
+    student2 = student1
+    student2.attendance = 99
+    # student1 should now also have an attendance attribute
+\end{minted}
+
+\subsection{Handling User Supplied ``Magic Methods''}
+%TODO
+\section{Analysis Results}
+
+Here, we will present several buggy programs and the results of their analysis.
+
+One of the most powerful features of the analysis system is it's ability to detect mistakes that are
+not actually type errors. For example, in the following program, the analysis system infers that the
+user equality checks two fundamentally different types. Since this will always produce false, the
+system warns that this could be an error.
+
+\begin{figure}
+    \begin{minted}{python}
+        my_number = 75 # Inferred PyInt
+        while 1:
+            guess = raw_input("What's your guess?") #Inferred String
+            # WARNING: ArithCheckEqual with type String and Int will never be equal 
+            if guess == my_number:
+                print "Correct"
+                break
+            elif guess < my_number:
+                print "Go higher"
+            else:
+                print "Go lower"
+    \end{minted}
+    \caption{Guess my number game. This code will produce a warning because the analyzer correctly
+        detects the lack of a conversion of \texttt{raw\_input} \texttt{string} to \texttt{int}.}
+\end{figure}
+
+The system can also detect classic python type errors such as trying to append an integer to a list
+with \texttt{+=} instead of \texttt{append}.
+\begin{figure}
+    \begin{minted}{python}
+        # Program to collect collect primes
+        def is_prime(x):
+          for i in range(2, x - 1):
+            if x % i == 0:
+              return False
+          return True
+        
+        primes = []
+        look_until = 10000
+        for i in xrange(look_until):
+          if is_prime(i):
+            # i is inferred Int
+            # primes is inferred List [Unknown]
+
+            # ArithPlusEqualsInvalidError: Cannot append int to list. 
+            # Only iterable objects can be appended to lists.
+            primes += i
+    \end{minted}
+\end{figure}
+
+The system can also detect missing return statements in functions:
+\begin{figure}
+    \begin{minted}{python}
+        def filter_odd(inp):
+          ret = []
+          for i in inp:
+            if i % 2 == 1:
+              ret.append(i)
+          # Does not return ret
+
+        inp_list = [1, 5, 123, 1231, 32, 63, 412, 2461512, 2354656]
+
+        # odds is inferred to be NoneType
+        # WARNING: Function produces NoneType and is used in assignment. Missing return?
+        odds = filter_odd(inp_list)
+        # ERROR: NoneType can not be iterated over
+        for num in odds:
+          print num
+    
+    \end{minted}
+\end{figure}
+
+       
+
+\end{document}
