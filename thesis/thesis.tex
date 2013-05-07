@@ -14,36 +14,38 @@
 
 \subsection{Compiled vs. Interpreted Languages}
 \doublespacing
-% Errors late vs errors early
-% Python is errors late
-Python is an extremely widely used programming language -- it's utilized everywhere from teaching courses to production
-web sites. One of Python's strengths is it's flexibility. Python is a dynamic language that is
-interpreted at runtime. While this contributes to it's flexibility, it also introduces a class of
-potential errors that are impossible in compiled languages.
 
-When writing software, their are two classes of errors that occur: logical errors in a semantically
-correct program, and errors that violate the semantics of the programming language. The study of
-detection in logical errors increasing with the development of self-proving languages such as Coq
-and Algol. Semantic errors, on the other hand, are well understood, and compilers for static
-languages can reason about these errors at compile time. 
+Python is an extremely widely used programming language; it's utilized everywhere -- from introductory computer science
+courses to production web sites to scientific computing. It's strength lies in it's flexibility, readability and
+simplicity. In order to facilitate these features, Python is a dynamic language that is interpreted at runtime. While
+this enables much of it's it's flexibility, it also invites a class of potential programming errors that are quickly
+detected and fixed in compiled languages.
 
-In general, one wants to know about these errors as quickly as possible. The sooner that the error
-is discovered, the sooner the programmer can investigate the problem and continue their development
-process. Compiled languages detect semantic errors at the compile phase -- before the program is
-even run. This increases the time before the program can be run, but it \emph{guarantees} that
-program is free from entire classes of errors. Languages like Java, C++, and Haskell fall into this
-category. Once a Java program is compiled, the compiled binary is guaranteed to be free from type
-errors provided that the code avoids certain unsafe operations. 
-\begin{figure}
-\begin{minted}{c}
-    struct Student {
-        int grade;
-    }
-    Student s;
-    int atten = s.attendance; // Semantic error -- Student has no field attendance
-\end{minted}
-\caption{A semantic error in the C Programming Language. This is detected by the compiler at compile
-time.}
+When writing software, their are two classes of errors that occur: logical errors in a semantically correct program, and
+errors that violate the semantics of the programming language. The study of detection in logical errors has been
+increasing with the development of self-proving languages such as Coq and Algol, but remains a somewhat open problem.
+Semantic errors, on the other hand, are well understood. Compilers for static languages can reason about these
+errors at compile time and won't produce a runnable binary until the programmer fixes the errors. Python, since it isn't
+compiled, lacks these protections.
+
+In general, the programmer wants to know about these errors as quickly as possible. The sooner that the error is
+discovered, the sooner the programmer can investigate the problem, attempt to fix it, and continue their development
+process. Compiled languages detect semantic errors at the compile phase -- before the program is even run. This
+increases the time before the program can be run, but it \emph{guarantees} that program is free from entire classes of
+errors. Languages like Java, C++, and Haskell fall into this category. Once a Java program is compiled, the compiled
+binary is guaranteed to be free from type errors provided that the code avoids certain unsafe operations.
+Figure~\ref{fig:csemanticerror} is an example of a semantic error that would be caught by the compiler in the \texttt{C}
+programming language. 
+\begin{figure} \begin{minted}{c} 
+    struct Student { 
+      int grade; 
+    } 
+    Student s; 
+    int atten = s.attendance; // Semantic error -- Student has no field attendance 
+  \end{minted} 
+  \caption{A semantic error in the C Programming Language. This is
+    detected by the compiler at compile time.} 
+  \label{fig:csemanticerror}
 \end{figure}
 
 \begin{figure}
@@ -56,27 +58,25 @@ time.}
     \end{minted}
     \caption{A semantic error in Python isn't caught until runtime which could an occur and
     arbitrary amount of time after starting the program.}
+    \label{fig:pythonsemanticerror}
 \end{figure}
 
-In a large class of languages, however, these guarantees aren't present. Rather than being compiled,
-interpreted languages are evaluated line by line as the interpreter reaches the line in question.
-Interpreted languages can be extremely flexible and allow programmers a large amount of freedom in
-how the use language constructs. However, these languages make weak guarantees on the programs they
-run. In Python, for example, the interpreter only checks that the program is syntactically valid
-before running it.  There is a massive class errors that can only be discovered after program
-executes the statement. In short running programs, this can be equivalent to a compiled language.
-The programmer runs his code, and the Python interpreter outputs a type error. If instead, the
-errant statement doesn't get executed for several hours after the program begins, the programmer has
-now wasted hours that would have been saved the system could have notified her of a type error at
-runtime. 
-% TODO: type error example.
+In runtime-interpreted languages, however, these guarantees aren't present. Rather than being compiled, interpreted
+languages are evaluated line by line as the interpreter reaches the line in question. Interpreted languages can be
+extremely flexible and allow programmers a large amount of freedom in how the use language constructs. However, these
+languages make weak guarantees on the programs they run. In Python, for example, the interpreter only checks that the
+program is syntactically valid before running it. Figure~\ref{fig:pythonsemanticerror} gives an example of a semantic
+error in Python which will not be caught until runtime. These present an entire class errors that can only be discovered
+after program executes the statement. In short-running programs, the debug time can be equivalent to a compiled language. The
+programmer runs her code and the Python interpreter immediately outputs a type error. If instead, the errant statement doesn't get
+executed for several hours after the program begins, the programmer has now wasted hours that would have been saved the
+system could have notified her of a type error at runtime. 
 
-Late error detection is also an error when Python is used as a webserver -- if a type error is
-accidentally introduced in a seldom used codepath, the error won't be discovered until much later
-when a user hits the codepath and is presented with the error. Ideally, the programmer could have
-been alerted of this error before deploying the code. If the website had been written in a
-statically typed language, the error would have been caught at compile time and fixed. Instead, it
-made it all the way to an end user.
+Late error detection is also an problem when Python is used in a web application or other target with rarely executed
+code paths -- if a type error is accidentally introduced in a seldom used code path, the error won't be discovered until
+much later when a user hits the code path and is presented with the error. Ideally, the programmer could have been
+alerted of this error before deploying the code. If the website had been written in a statically typed language, the
+error would have been caught at compile time and fixed. Instead, it made it all the way to an end user.
 
 \section{Why Doesn't Python Include Semantic Checking?}
 % TODO: example computing with information stored in types
@@ -87,7 +87,7 @@ static checking. The problem lies in the flexibility of Python's type system.
 Before investigating the flexibility of the type system, let's clarify exactly what we mean when we
 discuss the type of a variable. Intuitively, it's any property where changing it could cause a type
 error. In Python, this encompasses the fields an object has if it is a instance type or the objects
-underlying core type. See figure TODO for examples.
+underlying core type. Figure~\ref{fig:pythontypes} details several different types in Python.
 
 \begin{figure}
     \begin{minted}{python}
@@ -112,25 +112,27 @@ underlying core type. See figure TODO for examples.
     \end{minted}
     \caption{Examples of types in Python. Types can either be a core type or instance type. Instance
     types vary in the fields they define}
+    \label{fig:pythontypes}
 \end{figure}
 
-In Python, the type of a variable can change as the program proceeds. Contrast this with Java where
-a variable is born with a type that never changes. Since Python types can change, it stands to
-reason that if we wanted to, we could encode information in the type of a value rather than using
-the value instead. You could write an entire program that worked by only modifying the types of
-variables! Although I will not prove it, it should be relatively obvious that the only perfect type
-verification system for Python is to run the program! After you've run the program, you've pretty
-much defeated the purpose (even ignoring the programs dependence and effects on external inputs).
+In Python, the type of a variable can change as the program proceeds. Contrast this with Java and other dynamically
+typed languages where a variable is born with a type that never changes. Since Python types can change, it stands to
+reason that if we wanted to, we could encode information in the type of a value rather than using the value instead. You
+could write an entire program that worked by only modifying the types of variables! Although I will not prove it, it
+should be relatively obvious that the only perfect type verification system for Python is to run the program! After
+you've run the program, you have defeated the purpose (even ignoring the programs dependence and effects on external
+inputs).
 
-
-Thankfully, though a perfect system is impossible, it is possible the create a system approximates
-type information instead. Ideally, rather than running in an undecidable amount of time, our type
-system will run in time linear to the number of statements in the program. From this, it because
-clear that we can't allow our analysis to backtrack -- it can only analyze each statement once. 
+Though a perfect bounded-time simulation of the type system is impossible, it is possible the create a system approximates type
+information instead. Ideally, rather than running in an undecidable amount of time, our type system will run in time
+linear to the number of statements in the program. From this, it because clear that we can't allow our analysis to
+backtrack -- it can only analyze each statement once. 
 
 Thus, we must approximate control flow that would cause our program to loop. There are two primary
 elements of control flow that would cause our program to loop on itself: looped control flow and
-recursion. Handling looped control is actually quite straightforward: simply ignore it.
+recursion. Handling looped control is actually quite straightforward: simply ignore it. Figure~\ref{fig:ignoreloops}
+gives an example where no information is lost by executing the loop body only once and Figure~\ref{fig:cantignoreloops}
+shows an example where our inference is incorrect.
 \begin{figure}
     \begin{minted}{python}
       def count_occurrences(list, item_to_count):
@@ -144,10 +146,10 @@ recursion. Handling looped control is actually quite straightforward: simply ign
       count = count_occurrences(some_strings)
 
   \end{minted}
-  \caption{
-      A loop to count the occurrences of an item in a list. In this loop, the types of the
+  \caption{A loop to count the occurrences of an item in a list. In this loop, the types of the
       variables can be fully inferred by one evaluation of the loop.
   }
+  \label{fig:ignoreloops}
 \end{figure}
 
 
@@ -163,14 +165,13 @@ recursion. Handling looped control is actually quite straightforward: simply ign
         print e.prop5
         # The type of e now is directly dependent on the number of loop iterations
     \end{minted}
-    \caption{
-        Performing a silly computation with types. Without fully evaluating the loop, there is now
+    \caption{Performing a silly computation with types. Without fully evaluating the loop, there is now
         way that we could determine the type of \texttt{e}. If we evaluated once, we would infer
         \texttt{e} to have only one parameter, \texttt{prop1}. However, \texttt{e} will have 10
         properties set.  
-     } \end{figure}
-% TODO: example of ignoring looped control flow.
-% TODO: example where type information is lost
+     } 
+     \label{fig:cantignoreloops}
+ \end{figure}
 When our analyzer reaches it loop, it registers the type information it can infer about the looping
 variables and it evaluates the body of loop a single time. Then, it makes the simplifying (and
 potentially incorrect) assumption that though the values may change in subsequent executions of the
@@ -184,19 +185,24 @@ function is the actual return type of the function. More precise details on hand
 will follow.
 
 \section{High Level Design}
-  Our static analyzer by creating an abstract representation of Python programs, and then simulating
-  their execution within this abstract space. Our abstract representation is broken up into two
-  components: the type system, and the evaluation system. The state of a Python program is
-  represented entirely by the type system. Each line of code is translated into a series actions
-  which are then applied to the program state. The system is designed to find two types of problems
+  Our static analyzer works by creating an abstract representation of Python programs, and simulating
+  their execution within this abstract space. Our abstract representation decomposes into two
+  components: the type system, and the action system. The type system fully represents our view into the state of a
+  Python program. We then translate each line of code into a series of composable actions 
+  which are then applied to the program state, yielding a new state. The system is designed to find two types of problems
   in code: type errors which would cause the program to halt in an unexpected way, and accidental
-  types that will not halt the program but will almost certainly cause unexpected behavior to occur.
+  types that will not halt the program but will almost certainly cause unexpected behavior to occur. The detection of
+  accidental but non-fatal errors is a currently investigated field; the Clang C/C++ compiler presents a productionized
+  example of this practice and is under current development.
 
 \subsection{Handling of Errors}
-Error handling must be done with care in order to ensure a useful system. For example, if the
-analyzer stops running on reaching a potential error, it's of limited use, especially if the error
-was a false positive. In our system, errors are actually included in the program state. For
-example, consider the following short Python program:
+
+Error handling must be done with care in order to ensure a verification system that is useful in practice. For example,
+if the analyzer stops running on reaching a potential error, it's of limited use, especially if the error was a false
+positive. In our system, errors are actually included in the program state. Once the analysis is complete, we can
+collect all variables whose type is inferenced to be in error and present them coherently to the user. For example,
+consider the following short Python program:
+
 \begin{minted}{python}
     x = a
 \end{minted}
@@ -209,20 +215,24 @@ This behavior is identical for other classic type mistakes, eg.:
     a = 5
     x = a[1] # IdentifierNotSubscriptable 'a'
 \end{minted}
-Along with being propagated through the program state, we also maintain a list of errors that have
-been detected as the program executes.
+In this example, we assign \verb=x= the type \texttt{IdentifierNotSubscriptable} indicating that the attempt to
+list-index against \texttt{a} was invalid.
 
-\subsection{Handing Of Warnings}
-Since PyVer does a reasonable job a producing a full picture of the types used in a program, it
+Along with being propagated through the program state, we also maintain a list of errors that have been detected as the
+program executes. For convenience and to prevent the potential snowball effect from creating an overwhelming number of
+errors presented to the user.
+
+\subsection{Handling Of Warnings}
+Since Pyver does a reasonable job a producing a full picture of the types used in a program, it
 can also detect usages of types that are probably unintentional. We leverage this knowledge to warn
 programmers of suspect code to limit time spent debugging. To produce warnings, we have several heuristics we have added. In a complete system, many more would
-help to catch bugs in a wider range of programs. PyVer can currently produce the following warnings:
+help to catch bugs in a wider range of programs. Pyver can currently produce the following warnings:
 
 \begin{itemize}
     \item \textbf{Differing core types surrounding \texttt{==}}: In Python, an integer type will never
           equal a list type will never equal a set type will never equal a dictionary type will
           never equal a string type. This only applies to the core types, however, since their
-          equality method cannot be overridden. This has one notable edge case: \texttt{True} and
+          equality method cannot be overridden in user defined types. This has one notable edge case: \texttt{True} and
           \texttt{False} in
           Python are not really their own types -- \texttt{True} is an alias for 1 and
           \texttt{False} is an alias for 0. Therefore, comparing integers to booleans is a
@@ -236,7 +246,6 @@ help to catch bugs in a wider range of programs. PyVer can currently produce the
 
 Python certainly contains many more of these type ``gotchas'', and they could be incorporated into a
 productionized version of this system.
-          
 
 \subsection{Representation of Type System} 
 
@@ -404,7 +413,29 @@ An example:
 \end{minted}
 
 \subsection{Handling User Supplied ``Magic Methods''}
-%TODO
+One of Python's most powerful features is the ability for users to override so called ``magic methods''. These methods,
+started and followed by double underscores allow the programmer to override seemingly built-in language features for
+their own datatypes. For example, if you define an \texttt{\_\_getitem\_\_} on your class, your class will support list
+indexing.
+\begin{figure}
+    \begin{minted}{python}
+        class Funky(object):
+            def __getitem__(self, index):
+                return index
+
+        f = Funky()
+        print f["Hello world"] # prints "Hello World"
+    \end{minted}
+    \caption{Python allows you to override the behavior of different operatorsfor your own classes}
+\end{figure}
+
+Pyver supports magic methods by attempting to search for an existing use-supplied definition of the appropriate magic
+method matching the language construct. For example, in figure TODO, f is a \texttt{ComplexType}, so upon seeing a
+\texttt{GetItem} action, it searches for an existing \texttt{\_\_getitem\_\_} to invoke.
+  
+Each action that Pyver supports maps one-to-one with a ``magic method''. Currently Pyver does not support all magic
+methods (only the most common) but could be easily improved to support the full set.
+
 \section{Analysis Results}
 
 Here, we will present several buggy programs and the results of their analysis.
