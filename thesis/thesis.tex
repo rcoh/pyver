@@ -251,32 +251,36 @@ productionized version of this system.
 
 Loosely speaking, the Type System represents the noun of our inference system. The type system has
 the following representation:
-\emph{This listing needs to be reworked to be more readable}
- \begin{verbatim} 
+\emph{This listing currently represents types in the Haskell style which may be a bit unfamiliar to some readers. A
+pending TODO is to pick a more widely understood format.}
+\begin{minted}{haskell}
   PyType = 
-      # Core Types
+      -- Core Types
       PyInt | 
       PyBool | 
       PyChar |
       PyStr  |
+      NoneType |
+      FunctionType { name :: String, args :: [PyType], body :: [Action] } | 
 
+      -- Core datastructures
       PyList PyType | 
       PySet  PyType |
       PyDict PyType PyType | 
 
-      UnionType [PyType] | 
 
+      -- Normal classes / objects
       ComplexType { String => PyType } | 
-      Function { name :: String, args :: [PyType], body :: [Action] } | 
 
+      UnionType [PyType] | 
       Identity |
       Unknown |
 
       AttributeNotFound String |
       IdentifierNotFound String |
       ObjectNotSubscriptable String |
-      ObjectNotCallable String deriving (Show, Eq) 
-\end{verbatim}
+      ObjectNotCallable String 
+\end{minted}
 
 This encompasses types for the core Python primitives (ints, bools, strings), the standard parameterized types (lists, sets, and dictionaries). The UnionType allows us to represent expressions that may be several different types at a given program point, for example, in code like the following:
 
@@ -286,6 +290,20 @@ This encompasses types for the core Python primitives (ints, bools, strings), th
 \end{minted}
 
 Our system inferences \verb=b= to be a \verb=UnionType [PyInt, PyBool, PyList Unknown]=.
+
+Union types can also be created when types differ at a branch:
+\begin{minted}{python}
+    class Student:
+      grade = 100
+
+    s_attend_class = math.randbool()
+    s = Student()
+    if s_attended_class:
+      s.attendance = 100
+\end{minted}
+At the end of this code path, our system infers the \texttt{s} is the union of an object with an attendance field and an
+object with just a student field. Further operations will be tried against both representations. Full details on the
+semantics of union types are discussed later.
 
 \verb=ComplexType=, which contains a map from \verb=String= to \verb=PyType= is used to represent
 classes composed of the other core types. For example:
@@ -321,17 +339,17 @@ deconstructed into the following actions:
 \begin{verbatim}
   Action =
     Assignment   lhsFunc :: (PyType -> PyType -> PyType), rhs :: PyType
-    GetAttribute item :: String, base_object :: PyType -> PyType
-    SetAttribute item :: String, attr_value :: PyType, base_object :: PyType -> PyType
+    GetAttribute item :: String, base_object :: PyType 
+    SetAttribute item :: String, attr_value :: PyType, base_object :: PyType 
     DeleteAttribute TODO
-    GetSubscript index ::  PyType,  base_object :: PyType -> PyType
-    SetSubscript index ::  PyType, value :: PyType, base_object :: PyType -> PyType
-    DeleteSubscript index ::  PyType, base_object :: PyType -> PyType
+    GetSubscript index ::  PyType,  base_object :: PyType 
+    SetSubscript index ::  PyType, value :: PyType, base_object :: PyType 
+    DeleteSubscript index ::  PyType, base_object :: PyType 
 
-    ArithPlus left :: PyType, right :: PyType -> PyType
-    ArithMinus left :: PyType, right :: PyType -> PyType  
-    ArithTimes left :: PyType, right :: PyTyp -> PyTypee
-    ArithDiv left :: PyType, right :: PyTyp -> PyTypee
+    ArithPlus left :: PyType, right :: PyType 
+    ArithMinus left :: PyType, right :: PyType 
+    ArithTimes left :: PyType, right :: PyType
+    ArithDiv left :: PyType, right :: PyType 
 
     ArithPlusEqual left :: PyType, right :: PyType
     ArithMinusEqual left :: PyType, right :: PyType
@@ -344,10 +362,12 @@ deconstructed into the following actions:
     LoopWhile  looping_scope :: PyType, body :: [Action]
 \end{verbatim}
 
-% TODO: nesting actions?
-
 These operations are generalized in that they operate identically not only on concrete types, but
-also on scopes. When applied, all actions produce PyTypes.
+also on scopes. All Actions are ``Applyable''. When applied, all Actions produce a new PyType. The apply, combined with
+the lazyness of Haskell allows us to nest actions -- we can nest one action within another by applying it, which
+produces a new PyType.
+
+Below, we will summarize the Python code that leads to these actions.
 
 \verb=GetAttribute= is the ``dot'' operator as well as simply looking up a variable in a scope. When
 applied, GetAttribute yields the type of the resulting attribute.
@@ -401,8 +421,9 @@ tricky. We handle it by using value numbering. All values that should be kept id
 same value-number. Inside the actual tree, the values are not stored, but instead, their value
 numbers. When something is modified, it is modified in the map from value number to \verb=PyType=.
 That way, all attributes which should share the same type in the Python program are also modified.
-An example:
+We see this in Figure~\ref{fig:mutablestate}.
 
+\begin{figure}
 \begin{minted}{python}
     class Student:
       grade = 95
@@ -411,6 +432,9 @@ An example:
     student2.attendance = 99
     # student1 should now also have an attendance attribute
 \end{minted}
+\caption{Reference equality of two objects links their types}
+\label{fig:mutablestate}
+\end{figure}
 
 \subsection{Handling User Supplied ``Magic Methods''}
 One of Python's most powerful features is the ability for users to override so called ``magic methods''. These methods,
@@ -427,14 +451,38 @@ indexing.
         print f["Hello world"] # prints "Hello World"
     \end{minted}
     \caption{Python allows you to override the behavior of different operatorsfor your own classes}
+    \label{fig:magicmethods}
 \end{figure}
 
 Pyver supports magic methods by attempting to search for an existing use-supplied definition of the appropriate magic
-method matching the language construct. For example, in figure TODO, f is a \texttt{ComplexType}, so upon seeing a
+method matching the language construct. For example, in Figure~\ref{fig:magicmethods}, \texttt{f} is a \texttt{ComplexType}, so upon seeing a
 \texttt{GetItem} action, it searches for an existing \texttt{\_\_getitem\_\_} to invoke.
   
 Each action that Pyver supports maps one-to-one with a ``magic method''. Currently Pyver does not support all magic
 methods (only the most common) but could be easily improved to support the full set.
+
+\subsection{Representation of Union Types}
+Pyver's representation of union types is a heuristic designed to give more accurate results in undecidable
+scenarios. At their core, union types are simply a list of other types. A variable typed with a union type may be any one
+of the types in the set. The rules of union types in Pyver are as follows:
+\begin{enumerate}
+  \item A union type of a single type is collapsed into a concrete type
+  \item When adding a new type to a union type: 
+      \begin{itemize}
+          \item If it is a ComplexType (standard python class), merge it in with all existing ComplexTypes in the union if
+              there is no overlap. (Overlap is defined as fields that share the same name, but differ in type). If there
+              is overlap, create a second ComplexType. Merge any identical or non-overlapping ComplexTypes if possible.
+          \item Unions have set semantics: if a type is identical to an existing type in the union, discard it, it does
+              not enter the union twice.
+          \item A union cannot contain Unknown -- Unknown indicates no knowledge of the type, as is the case in an empty
+              list. Since a union must contain 2 or more types, it can never contain Unknown.
+      \end{itemize}
+  \item When actions are applied to a union type, they are mapped over all the of child types of the union. This
+      produces a new union with the results, some of which, of course may be error types. The rules for merging are
+      applied.
+\end{enumerate}
+
+
 
 \section{Analysis Results}
 
