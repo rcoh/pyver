@@ -18,25 +18,25 @@
 Python is an extremely widely used programming language; it's utilized everywhere -- from
 introductory computer science courses to production web sites to scientific computing. Its strength
 lies in its flexibility, readability and simplicity. In order to facilitate these features, Python
-is a dynamic language that is interpreted at runtime. While this enables much of it's it's
+is dynamic language that is interpreted at runtime. While this enables much of it's it's
 flexibility, it also invites a class of potential programming errors to sneak into one's code that
-would be quickly detected and fixed in compiled languages.
+would be quickly detected in compiled languages.
 
-When writing software, their are two classes of errors that occur: logical errors in a semantically correct program and
+Two classes of errors can occur while writing software: logical errors in a semantically correct program and
 errors that violate the semantics of the programming language. The study of detecting logical errors has been
 increasing with the development of self-proving languages such as Coq and Algol, but remains a somewhat open problem.
 Semantic errors, on the other hand, are well understood. Compilers for static languages can reason about these
-errors at compile time and won't produce a runnable binary until the programmer fixes the errors. Python, since it isn't
+errors at compile time and won't produce a runnable binary until the errors are resolved. Python, since it isn't
 compiled, lacks these protections.
 
-In general, the programmer wants to discover errors as quickly as possible. The sooner that the
-error is found, the sooner the programmer can investigate the problem, attempt to fix it, and
-continue their development process. Compiled languages detect semantic errors at the compile phase
+In general, the programmer wants to discover errors as quickly as possible. The sooner the
+programmer finds the error, the sooner the programmer can investigate the problem, attempt to fix it, and
+continue their development process. Compiled languages detect semantic errors during the compile phase
 -- before the program is even run. This increases the time before the program can be run, but it
 \emph{guarantees} that program is free from semantic errors. Languages like Java, C++, and Haskell
 fall into this category. Once a Java program is compiled, the compiled binary is guaranteed to be
 free from type errors provided that the code avoids certain unsafe operations.
-Figure~\ref{fig:csemanticerror} is an example of a semantic error that would be caught by the
+Figure~\ref{fig:csemanticerror} gives an example of a semantic error that would be caught by the
 compiler in the \texttt{C} programming language. 
 
 \begin{figure} \begin{minted}{c} 
@@ -76,7 +76,7 @@ programs, the debug time can be equivalent to a compiled language; the programme
 the Python interpreter immediately outputs a type error. If instead, the errant statement doesn't
 get executed for several hours after the program begins, the programmer has now wasted hours waiting
 for the program that could have been saved, had she been notified of a type error at
-initially. 
+before running the program. 
 
 Late error detection also poses problems when using Python in a web application or other target with rarely executed
 code paths -- if a type error is accidentally introduced in a seldom used code path, the error won't be discovered until
@@ -139,7 +139,7 @@ Thus, we must approximate control flow that would cause our program to loop, as 
 bound of constant work per statement. There are two primary elements of control flow that would
 cause our program to loop on itself: looped control flow and recursion. Handling looped control is
 actually quite straightforward: simply ignore it -- execute the loop body as if the control loop
-control structures didn't exist, and start looping variables at their initial type.
+control structures didn't exist, and start the looping variables at their initial type.
 Figure~\ref{fig:ignoreloops} gives an example where no information is lost by executing the loop
 body only once. Unfortunately, it's very easy to create examples where this isn't correct --
 Figure~\ref{fig:cantignoreloops} shows an example where our inference cannot produce the correct
@@ -191,7 +191,7 @@ loop, the type information will not.
 
 The more complex case to handle is that of recursion -- recall that iteration can even be simulated
 by recursive functions. We handle recursive functions by first detecting that a function is
-recursive (by tracking the function graph), and then applying an approximation. We approximate
+recursive (by tracking the function call graph), and then applying an approximation. We approximate
 recursive functions by assuming (possibly incorrectly) that the concrete type returned by the
 function is the actual return type of the function. More precise details on handling of functions
 will follow.
@@ -199,18 +199,20 @@ will follow.
 \section{High Level Design} Our static analyzer works by creating an abstract representation of
 Python programs and simulating their execution within this abstract space. Our abstract
 representation decomposes into two components: the type system, and the action system. The type
-system fully represents our view into the state of a Python program. To create the type system, we
-translate each line of code into a series of composable actions.  These actions are then applied to
-the program state, yielding a new state. The system is designed to find two types of problems in
-code: type errors which would cause the program to halt in an unexpected way, and accidental types
-that will not halt the program but will almost certainly cause unexpected behavior to occur. The
-detection of accidental but non-fatal errors is a currently investigated field; the Clang C/C++
-compiler presents a productionized example of this practice and is under current active development.
+system fully represents our view into the state of a Python program. To create the
+type-representation for a given program, we translate each line of code into a series of composable
+actions.  These actions are then applied to the program state, yielding a new state. At each step in
+the state, we evaluate the state for possible problems. The system is
+designed to find two types of problems in code: type errors which would cause the program to halt in
+an unexpected way, and accidental types that will not halt the program but will almost certainly
+cause unexpected behavior to occur. The detection of accidental but non-fatal errors is a currently
+investigated field; the Clang C/C++ compiler presents a productionized example of this practice and
+is under currently active development.
 
 \subsection{Handling of Errors}
 
 Error handling must be done with care to create a verification system that is useful in practice.
-For example, if the analyzer stops running on reaching a potential error, it's of limited use,
+For example, if the analyzer stops running upon reaching a potential error, it's of limited use,
 especially if the error was a false positive. In our system, errors are actually included in the
 resulting type information. Once the analysis is complete, we can collect all variables whose type
 is inferenced to be in error and present them coherently to the user. For example, consider the
@@ -219,7 +221,7 @@ following short Python program:
 \begin{minted}{python}
     x = a
 \end{minted}
-In this program, \verb=x= is assigned to \verb=a=, but \verb=a= isn't defined. In our system, the type of
+In this program, \verb=x= is assigned to \verb=a=, but \verb=a= isn't defined. The type of
 \verb=x= would then become \verb=NotDefined 'a'=. Any further computations that used \verb=x= would
 have this value propagated.
 
@@ -231,9 +233,9 @@ This behavior is identical for other classic type mistakes, eg.:
 In this example, we assign \verb=x= the type \texttt{IdentifierNotSubscriptable} indicating that the attempt to
 list-index against \texttt{a} was invalid.
 
-Along with being propagated through the program state, we also maintain a list of errors that have been detected as the
-program executes. This is done for convenience and to prevent the potential snowball effect from creating an overwhelming number of
-errors presented to the user.
+Along with being propagated through the program state, we also maintain a list of errors that have
+been detected as the program executes. This is done for convenience and to prevent the potential
+snowball effect from creating an overwhelming number of errors presented to the user.
 
 \subsection{Handling Of Warnings}
 Since Pyver does a reasonable job a producing a full picture of the types used in a program, it
@@ -265,8 +267,8 @@ productionized version of this system.
 
 Loosely speaking, the Type System represents the noun of our inference system. The type system has
 the following representation:
-\emph{This listing currently represents types in the Haskell style which may be a bit unfamiliar to some readers. A
-pending TODO is to pick a more widely understood format.}
+\emph{This listing currently represents types in the Haskell style which may be a bit unfamiliar to
+some readers. The type name comes first, followed by the types of its fields.}
 \begin{minted}{haskell}
   PyType = 
       -- Core Types
@@ -344,13 +346,12 @@ Unknown is used when the type of a variable cannot be knowable at a code positio
 Our system inferences \verb=a= to be a \verb=ListType Unknown=.
 
 The remaining types are generated when the action that is applied to a type is illegal to apply (for
-example applying \verb=getSubscript= to an \verb=PyType=
+example applying \verb=getSubscript= to a \verb=PyInt=.
 
 \subsection{Representation of the action system}
 The action system represents the verbs of our abstract representation. The actions correspond to
 actions that are built into the Python language. Python programs are
 deconstructed into the following actions:
-\emph{This listing should also be rewritten}
 \begin{verbatim}
   Action =
     Assignment   lhsFunc :: (PyType -> PyType -> PyType), rhs :: PyType
@@ -378,8 +379,9 @@ deconstructed into the following actions:
 \end{verbatim}
 
 These operations are generalized in that they operate identically not only on concrete types, but
-also on scopes. All Actions are ``Applyable''. When applied, all Actions produce a new PyType. The apply, combined with
-the lazyness of Haskell allows us to nest actions -- we can nest one action within another by applying it, which
+also on scopes. All actions are ``Applyable''. When applied, all actions produce a new PyType. The apply, combined with
+the lazyness of Haskell allows us to nest actions -- we can nest one action within another. When the
+concrete type is desired, we pass in a scope and apply it, which
 produces a new PyType.
 
 Below, we will summarize the Python code that leads to these actions.
@@ -389,7 +391,7 @@ applied, GetAttribute yields the type of the resulting attribute.
 Accessing in a scope:
 \begin{minted}{python}
     a = 5
-    x = a # GetAttribute ``a'' ProgramScope
+    x = a # GetAttribute ``a'' GlobalScope
 \end{minted}
 
 Accessing in a class:
@@ -578,4 +580,29 @@ Figure~\ref{fig:noreturn}.
     \caption{A silly program to filter odd numbers from a list}
     \label{fig:noreturn}
 \end{figure}
+\section{Further Work}
+
+In it's current state, Pyver has several avenues for improvement: 
+\begin{itemize}
+      \item Support for more Python actions / ``magic methods''. Currently, when Pyver encounters a
+          piece of code it cannot produce an action for, it simply ignores it.
+      \item Creation of more warnings based on common detectable programming mistakes
+      \item Support for components of real programs such as imports and type information of external
+          libraries
+\end{itemize}
+
+\section{Conclusion}
+
+Pyver presents an abstract representation and evaluation strategy for statically evaluating the
+types in a dynamic language. Rather than simply attempting to assign a type to each variable, it
+simulates the execution of the program to deduce type information. It makes critical approximations
+to allow the excecution to skip through loops and recursion. These two types of program flow rarely
+change the type information in ``normally written'' programs. Furthermore, skipping through these
+types of statements by ignoring the loop component allows us to simulate the programs in bounded 
+time, rather than in an undecidable amount of time.
+
+With the type information we can infer as we progress through the program, we can predict both true
+type errors that would lead to crashes and probable type errors that lead to unexpected behavior for
+the programmer.
+
 \end{document}
