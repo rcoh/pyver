@@ -18,13 +18,13 @@
 Python is an extremely widely used programming language; it's utilized everywhere -- from
 introductory computer science courses to production web sites to scientific computing. Its strength
 lies in its flexibility, readability and simplicity. In order to facilitate these features, Python
-is dynamic language that is interpreted at runtime. While this enables much of it's it's
+is a dynamic language that is interpreted at runtime. While this enables much of its
 flexibility, it also invites a class of potential programming errors to sneak into one's code that
 would be quickly detected in compiled languages.
 
 Two classes of errors can occur while writing software: logical errors in a semantically correct program and
 errors that violate the semantics of the programming language. The study of detecting logical errors has been
-increasing with the development of self-proving languages such as Coq and Algol, but remains a somewhat open problem.
+increasing with the development of self-proving languages such as Coq and Agda, but remains a somewhat open problem.
 Semantic errors, on the other hand, are well understood. Compilers for static languages can reason about these
 errors at compile time and won't produce a runnable binary until the errors are resolved. Python, since it isn't
 compiled, lacks these protections.
@@ -33,9 +33,9 @@ In general, the programmer wants to discover errors as quickly as possible. The 
 programmer finds the error, the sooner the programmer can investigate the problem, attempt to fix it, and
 continue their development process. Compiled languages detect semantic errors during the compile phase
 -- before the program is even run. This increases the time before the program can be run, but it
-\emph{guarantees} that program is free from semantic errors. Languages like Java, C++, and Haskell
+\emph{guarantees} that the program is free from semantic errors. Languages like Java, C++, and Haskell
 fall into this category. Once a Java program is compiled, the compiled binary is guaranteed to be
-free from type errors provided that the code avoids certain unsafe operations.
+free from type errors, provided that the code avoids certain unsafe operations.
 Figure~\ref{fig:csemanticerror} gives an example of a semantic error that would be caught by the
 compiler in the \texttt{C} programming language. 
 
@@ -70,13 +70,12 @@ Interpreted languages can be extremely flexible and allow programmers large amou
 how they use language constructs. However, these languages make weak guarantees on the programs they
 run. In Python, for example, the interpreter only checks that the program is syntactically valid
 before running it. Figure~\ref{fig:pythonsemanticerror} gives an example of a semantic error in
-Python which will not be caught until runtime. These present an entire class errors that can only be
-discovered when the interpreter attempts to execute the offending statement. In short-running
+Python which will not be caught until runtime. These present an entire class of errors that can only
+be discovered when the interpreter attempts to execute the offending statement. In short-running
 programs, the debug time can be equivalent to a compiled language; the programmer runs her code and
 the Python interpreter immediately outputs a type error. If instead, the errant statement doesn't
-get executed for several hours after the program begins, the programmer has now wasted hours waiting
-for the program that could have been saved, had she been notified of a type error at
-before running the program. 
+get executed until several hours after the program began, the programmer has now wasted hours that
+could have been saved, had she been notified of a type error before running the program. 
 
 Late error detection also poses problems when using Python in a web application or other target with rarely executed
 code paths -- if a type error is accidentally introduced in a seldom used code path, the error won't be discovered until
@@ -90,7 +89,7 @@ static checking of types. The problem lies in the flexibility of Python's type s
 
 Before investigating the flexibility of the type system, let's clarify exactly what we mean when we
 discuss the type of a variable. Intuitively, it's any property where changing it could cause a type
-error. In Python, this encompasses the fields an object has and it's underlying core type.
+error. In Python, this encompasses the fields an object has and its underlying core type.
 Figure~\ref{fig:pythontypes} details several different types in Python.
 
 \begin{figure}
@@ -119,26 +118,27 @@ Figure~\ref{fig:pythontypes} details several different types in Python.
     \label{fig:pythontypes}
 \end{figure}
 
-In Python, variables are dynamically typed. This implies that the type of a variable can change as
+In Python, variables are dynamically typed. This means that the type of a variable can change as
 the program proceeds. Contrast this with Java and other statically typed languages where a variable
 is born with a type that never changes. Since Python types can change, it stands to reason that if
 we wanted to, we could encode information in the type of a variable rather than using the value. You
 could write an entire program that worked by only modifying the types of variables!  Although I will
 not prove it formally, it should be relatively obvious given this information that the only perfect
 type verification system for Python is to run the program.  After you've run the program, you have
-defeated the purpose your verification system (since running and waiting for the program was what we
+defeated the purpose of your verification system (since running and waiting for the program was what we
 were trying to avoid in the first place).
 
-Though a perfect bounded-time simulation of the type system is impossible, it is possible the create
-a system approximates type information instead. Ideally, rather than running in an undecidable
+Though a perfect bounded-time simulation of the type system is impossible, it is possible to create
+a system that approximates type information instead. Ideally, rather than running in an undecidable
 amount of time, our type analyzer will run in time linear in the number of statements in the
-program. From this, it becomes clear that we can't allow our analysis to backtrack -- it can only
-perform a constant amount of work per statement. 
+program. From this, we can see that we must not process statements a non-constant number of times.
+For example, if our system directly simulated a while loop, that would violate this guarantee, since
+there is no bound on how many iterations the loop can have.
 
 Thus, we must approximate control flow that would cause our program to loop, as a loop removes the
 bound of constant work per statement. There are two primary elements of control flow that would
 cause our program to loop on itself: looped control flow and recursion. Handling looped control is
-actually quite straightforward: simply ignore it -- execute the loop body as if the control loop
+actually quite straightforward: simply ignore it -- execute the loop body as if the 
 control structures didn't exist, and start the looping variables at their initial type.
 Figure~\ref{fig:ignoreloops} gives an example where no information is lost by executing the loop
 body only once. Unfortunately, it's very easy to create examples where this isn't correct --
@@ -177,37 +177,59 @@ result.
         print e.prop5
         # The type of e now is directly dependent on the number of loop iterations
     \end{minted}
-    \caption{Performing a silly computation with types. Without fully evaluating the loop, there is now
+    \caption{Performing a silly computation with types. Without fully evaluating the loop, there is no
         way that we could determine the type of \texttt{e}. If we evaluated once, we would infer
         \texttt{e} to have only one parameter, \texttt{prop1}. However, \texttt{e} will have 10
         properties set.  
      } 
      \label{fig:cantignoreloops}
  \end{figure}
-When our analyzer reaches it loop, it registers the type information it can infer about the looping
+
+When our analyzer reaches a loop, it registers the type information it can infer about the looping
 variables and it evaluates the body of loop a single time. Then, it makes the simplifying (and
 potentially incorrect) assumption that though the values may change in subsequent executions of the
-loop, the type information will not.
+loop, the type information will not. At this point, we could also use other approximation
+techniques, such as using a bounded-iteration fixed point algorithm. We would iterate over the loop
+until the types stopped changing, being sure to stop at predetermined time if the fixed point
+did not appear. However, loops creating different types per iteration in real code is quite rare, so we
+don't handle it here.
 
 The more complex case to handle is that of recursion -- recall that iteration can even be simulated
 by recursive functions. We handle recursive functions by first detecting that a function is
-recursive (by tracking the function call graph), and then applying an approximation. We approximate
+recursive by tracking the function call graph, and then applying an approximation. We approximate
 recursive functions by assuming (possibly incorrectly) that the concrete type returned by the
-function is the actual return type of the function. More precise details on handling of functions
-will follow.
+function is the actual return type of the function in \emph{all} branches. From their, we're able
+to escape the recursion, since we can replace the recursive call with the type of the base-case.
+Figure~\ref{fig:factorial} gives an example of a function where this does not lose information.
+
+\begin{figure}
+    \begin{minted}{python}
+        def factorial(n):
+          if n == 1:
+            return n
+          else:
+            return n * factorial(n - 1)
+
+        factorial(5)
+    \end{minted}
+    \caption{We can't simply keep following the control flow to find the type of \texttt{factorial} -- the
+        recursion would loop forever. Rather, when we see the recursive call, we make the assumption
+    that it returns that same type as the other return statement, in this case an integer.}
+    \label{fig:factorial}
+ \end{figure}
 
 \section{High Level Design} Our static analyzer works by creating an abstract representation of
 Python programs and simulating their execution within this abstract space. Our abstract
-representation decomposes into two components: the type system, and the action system. The type
+representation comprises of two components: the type system, and the action system. The type
 system fully represents our view into the state of a Python program. To create the
-type-representation for a given program, we translate each line of code into a series of composable
+type representation for a given program, we translate each line of code into a series of composable
 actions.  These actions are then applied to the program state, yielding a new state. At each step in
 the state, we evaluate the state for possible problems. The system is
 designed to find two types of problems in code: type errors which would cause the program to halt in
 an unexpected way, and accidental types that will not halt the program but will almost certainly
 cause unexpected behavior to occur. The detection of accidental but non-fatal errors is a currently
 investigated field; the Clang C/C++ compiler presents a productionized example of this practice and
-is under currently active development.
+is under currently active development.\footnote{http://clang.llvm.org/diagnostics.html}
 
 \subsection{Handling of Errors}
 
@@ -221,7 +243,7 @@ following short Python program:
 \begin{minted}{python}
     x = a
 \end{minted}
-In this program, \verb=x= is assigned to \verb=a=, but \verb=a= isn't defined. The type of
+In this program, \verb=a= is assigned to \verb=x=, but \verb=a= isn't defined. The type of
 \verb=x= would then become \verb=NotDefined 'a'=. Any further computations that used \verb=x= would
 have this value propagated.
 
@@ -235,14 +257,16 @@ list-index against \texttt{a} was invalid.
 
 Along with being propagated through the program state, we also maintain a list of errors that have
 been detected as the program executes. This is done for convenience and to prevent the potential
-snowball effect from creating an overwhelming number of errors presented to the user.
+snowball effect from creating an overwhelming number of errors presented to the user stemming from a
+single typo.
 
 \subsection{Handling Of Warnings}
-Since Pyver does a reasonable job a producing a full picture of the types used in a program, it
-can also detect usages of types that are probably unintentional. We leverage this knowledge to warn
-programmers about suspect code to limit time spent debugging. To produce warnings, we have added two
-heuristics. In a complete system, many more would
-help to catch bugs in a wider range of programs. Pyver can currently produce the following warnings:
+
+Since Pyver does a reasonable job a producing a full picture of the types used in a program, it can
+also detect usages of types that are probably unintentional. We leverage this knowledge to warn
+programmers about suspect code which can help limit time spent debugging. To produce warnings, we
+have added two heuristics. In a complete system, many more would help to catch bugs in a wider range
+of programs. Pyver can currently produce the following warnings:
 
 \begin{itemize}
     \item \textbf{Differing core types surrounding \texttt{==}}: In Python, an integer type will never
@@ -260,12 +284,12 @@ help to catch bugs in a wider range of programs. Pyver can currently produce the
           without a return statement is almost certainly incorrect.
 \end{itemize}
 
-Python certainly contains many more of these type ``gotchas'', and they could be incorporated into a
+Python contains many more of these type ``gotchas'', and they could be incorporated into a
 productionized version of this system.
 
 \subsection{Representation of Type System} 
 
-Loosely speaking, the Type System represents the noun of our inference system. The type system has
+Loosely speaking, the type system represents the noun of our inference system. The type system has
 the following representation:
 \emph{This listing currently represents types in the Haskell style which may be a bit unfamiliar to
 some readers. The type name comes first, followed by the types of its fields.}
@@ -306,7 +330,7 @@ parameterized types (lists, sets, and dictionaries). The \texttt{UnionType} allo
     b = a[math.randint(2)]
 \end{minted}
 
-Our system inferences \verb=b= to be a \verb=UnionType [PyInt, PyBool, PyList Unknown]=.
+Our system infers \verb=b= to be a \verb=UnionType [PyInt, PyBool, PyList Unknown]=.
 
 Union types can also be created when types differ at a branch:
 \begin{minted}{python}
@@ -318,7 +342,7 @@ Union types can also be created when types differ at a branch:
     if s_attended_class:
       s.attendance = 100
 \end{minted}
-At the end of this code path, our system infers the \texttt{s} is the union of an object with an attendance field and an
+At the end of this code path, our system infers that \texttt{s} is the union of an object with an attendance field and an
 object with just a student field. Further operations will be tried against both representations. Full details on the
 semantics of union types are discussed later.
 
@@ -330,11 +354,11 @@ classes composed of the other core types. For example:
       enrolled = True
 \end{minted}
 
-Our system inferences \verb=Student= to be a 
+Our system infers \verb=Student= to be a 
 \verb=ComplexType { grade -> PyInt, enrolled -> PyBool }=
 
 The identity type is used to represent fields which have the identical type of their parent. We use
-this constructor field of classes. For example, returning the student example, the actual
+this in the constructor field of classes. For example, returning the student example, the actual
 representation would be
 \verb=ComplexType { grade -> PyInt, enrolled -> PyBool, __init__ -> Identity }=
 (\verb=__init__= is the constructor method in Python).
@@ -343,7 +367,7 @@ Unknown is used when the type of a variable cannot be knowable at a code positio
 \begin{minted}{python}
     a = []
 \end{minted}
-Our system inferences \verb=a= to be a \verb=ListType Unknown=.
+Our system infers \verb=a= to be a \verb=ListType Unknown=.
 
 The remaining types are generated when the action that is applied to a type is illegal to apply (for
 example applying \verb=getSubscript= to a \verb=PyInt=.
@@ -351,7 +375,7 @@ example applying \verb=getSubscript= to a \verb=PyInt=.
 \subsection{Representation of the action system}
 The action system represents the verbs of our abstract representation. The actions correspond to
 actions that are built into the Python language. Python programs are
-deconstructed into the following actions:
+deconstructed into the following actions (summarized below):
 \begin{verbatim}
   Action =
     Assignment   lhsFunc :: (PyType -> PyType -> PyType), rhs :: PyType
@@ -380,7 +404,8 @@ deconstructed into the following actions:
 
 These operations are generalized in that they operate identically not only on concrete types, but
 also on scopes. All actions are ``Applyable''. When applied, all actions produce a new PyType. The apply, combined with
-the lazyness of Haskell allows us to nest actions -- we can nest one action within another. When the
+the lazyness of Haskell allows us to nest actions -- one action can depend on the result of another
+without having to apply it immediately. When the
 concrete type is desired, we pass in a scope and apply it, which
 produces a new PyType.
 
@@ -415,8 +440,9 @@ SetAttribute returns the \verb=base_object= with the new attribute added.
     s.attendance = .99 # SetAttribute {item: 'attendance':, attr_value: PyFloat, base_object: s}
 \end{minted}
 
-\verb=GetSubscript= and \verb=SetSubscript= are the parallel to \verb=GetAttribute= and
-\verb=SetAttribute=, but the subscript operator (\verb=[]=)
+\verb=GetSubscript= and \verb=SetSubscript= are the parallel of \verb=GetAttribute= and
+\verb=SetAttribute=, but for the subscript operator (\verb=[]=) instead of the dot operator
+(\verb=.=).
 
 \begin{minted}{python}
     a = [1, 2, 3]
@@ -427,18 +453,26 @@ SetAttribute returns the \verb=base_object= with the new attribute added.
 \section{Implementation Details}
 
 Under the hood, the analyzer is implemented in Haskell. Haskell was chosen because of its type
-safety, functional properties, and the presence of Python parser in the standard library. 
+safety, functional properties, and the presence of a Python parser in the standard library. 
 
 The entire analysis is implemented as one large fold. The program is processed statement by statement. Each
 statement produces a new program state, which is given to the next statement.
 
 \subsection{Handling Mutable State}
-Representing a language like Python that relies heavily on shared mutable state in Haskell is
-tricky. We handle it by using value numbering. All values that should be kept identical share the
-same value-number. Inside the actual tree, the values are not stored, but instead, their value
-numbers. When something is modified, it is modified in the map from value number to \verb=PyType=.
-That way, all attributes which should share the same type in the Python program are also modified.
-We see this in Figure~\ref{fig:mutablestate}.
+
+Representing a language like Python that relies heavily on shared mutable state is tricky in
+Haskell. We handle it by using value numbering. If you assign a mutable variable to another in
+Python, not only do they share values, but they actually share types. Their types will be identical
+for the rest of the time that they reference the same object. Because of that, we must link their
+types together. 
+
+To handle this in a language without mutable state, we actually represent complex types by
+representing each unbound ComplexType we discover in analysis with a new value number. All values
+that should be kept identical share the same value-number. Inside the program representation, rather
+than store the values, we store their value numbers. When something is modified, it is modified in
+the map from value number to \verb=PyType=.  That way, all attributes which reference the same
+object will stay in sync when one is updated.  We see an example where this is required for
+correctness in Figure~\ref{fig:mutablestate}.
 
 \begin{figure}
 \begin{minted}{python}
@@ -455,7 +489,7 @@ We see this in Figure~\ref{fig:mutablestate}.
 
 \subsection{Handling User Supplied ``Magic Methods''}
 One of Python's most powerful features is the ability for users to override so called ``magic methods''. These methods,
-started and followed by double underscores allow the programmer to override seemingly built-in language features for
+started and followed by double underscores, allow the programmer to override seemingly built-in language features for
 their own datatypes. For example, if you define an \texttt{\_\_getitem\_\_} on your class, your class will support list
 indexing.
 \begin{figure}
@@ -467,7 +501,7 @@ indexing.
         f = Funky()
         print f["Hello world"] # prints "Hello World"
     \end{minted}
-    \caption{Python allows you to override the behavior of different operatorsfor your own classes}
+    \caption{Python allows you to override the behavior of different operators for your own classes}
     \label{fig:magicmethods}
 \end{figure}
 
@@ -479,34 +513,70 @@ Each action that Pyver supports maps one-to-one with a ``magic method''. Current
 methods (only the most common) but could be easily improved to support the full set.
 
 \subsection{Representation of Union Types}
-Pyver's representation of union types is a heuristic designed to give more accurate results in undecidable
-scenarios. Though this is one representation, more accurate representations almost certainly exist. At their core, union types are simply a list of other types. A variable typed with a union type may be any one
-of the types in the set. The rules of union types in Pyver are as follows:
+
+Pyver's representation of union types is a heuristic designed to give more accurate results in
+situations where the possible types for a variable diverge. Union types handle situations where the
+actual type of a variable can be any number of discrete different types. We present our
+representation -- more accurate representations almost certainly exist, but this seems to be
+effective for typical Python code. At their core, union types are simply a list of other types. A
+variable typed with a union type may be any one of the concrete types in the set. The rules of union types in
+Pyver are as follows:
+
 \begin{enumerate}
   \item A union type of a single type is collapsed into a concrete type
   \item When adding a new type to a union type: 
       \begin{itemize}
-          \item If it is a ComplexType (standard python class), merge it in with all existing ComplexTypes in the union if
-              there is no overlap. (Overlap is defined as fields that share the same name, but differ in type). If there
-              is overlap, create a second ComplexType. Merge any identical or non-overlapping ComplexTypes if possible.
           \item Unions have set semantics: if a type is identical to an existing type in the union,
               discard it -- it does
               not enter the union twice.
-          \item A union cannot contain Unknown -- Unknown indicates no knowledge of the type, as is the case in an empty
-              list. Since a union must contain 2 or more types, it can never contain Unknown.
+          \item If the union has become too large, this means it must contain many different
+              ComplexTypes or types parameterized by ComplexTypes. This is because there are a
+              finite number of other types. In this case, to widen the representation, we pick types
+              in the union that differ only in a ComplexType component and merge them. We attempt to
+              find types that have no overlap (preventing the need to chose if a parameter is of one
+              type or anothe). Widening the representation loses information, specifically, by
+              hiding future type errors.
       \end{itemize}
+  \item A union cannot contain Unknown -- Unknown indicates no knowledge of the type, as is the case in an empty
+              list. Since a union must contain 2 or more types, it can never contain Unknown.
+  \item A union cannot contain other union types. They should be merged into the root union.
   \item When actions are applied to a union type, they are mapped over all of the child types in the union. This
       produces a new union with the results, some of which may be error types. The rules for merging are
       applied to the new result before producing a new type.
 \end{enumerate}
 
+In Fig~\ref{fig:unionexamples} we present several flows of Union types in programs.
+\begin{figure}
+    \begin{minted}{python}
+        a = [] # PyList Unknown
+        a.append(5) # PyList Union [Unknown, Int] collapses to PyList Int
+        a.append(``3'') # PyList Union [Int String]
+        a.append(1) # PyList Union [Int String] -- identical types exist once
+
+        class Student:
+          grade = 5
+          age = 10
+
+        class Road:
+          grade = 3
+          age = 1
+        
+        b = []
+        b.append(Student()) # PyList ComplexType { grade :: Int, age ::  Int }
+        # Complex types are structural, so identical fields are identical types
+        # The assignment below doesn't change the type
+        b.append(Road()) # PyList ComplexType { grade :: Int, age ::  Int }
+    \end{minted}
+    \caption{Examples of Union Type Analysis}
+    \label{fig:unionexamples}
+\end{figure}
 
 
 \section{Analysis Results}
 
 Here, we will present several buggy programs and the results of their analysis.
 
-One of the most powerful features of the analysis system is it's ability to detect mistakes that are
+One of the most powerful features of the analysis system is its ability to detect mistakes that are
 not actually type errors. For example, in the Figure~\ref{fig:guessnum}, the analysis system infers that the
 user equality checks two fundamentally different types. Since this will always produce false, the
 system warns that this could be an error.
@@ -530,7 +600,7 @@ system warns that this could be an error.
     \label{fig:guessnum}
 \end{figure}
 
-The system can also detect classic python type errors such as trying to append an integer to a list
+The system can also detect classic Python type errors such as trying to append an integer to a list
 with \texttt{+=} instead of \texttt{append}. We see this in Figure~\ref{fig:findprimes}.
 \begin{figure}
     \begin{minted}{python}
@@ -582,7 +652,7 @@ Figure~\ref{fig:noreturn}.
 \end{figure}
 \section{Further Work}
 
-In it's current state, Pyver has several avenues for improvement: 
+In its current state, Pyver has several avenues for improvement: 
 \begin{itemize}
       \item Support for more Python actions / ``magic methods''. Currently, when Pyver encounters a
           piece of code it cannot produce an action for, it simply ignores it.
